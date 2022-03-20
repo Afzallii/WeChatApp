@@ -1,16 +1,20 @@
 package com.example.socialmediaapp;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
-
+import android.app.ProgressDialog;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
+
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
@@ -29,20 +33,27 @@ import java.util.HashMap;
 import de.hdodenhof.circleimageview.CircleImageView;
 
 public class SetupActivity extends AppCompatActivity {
-    private static final int REQUEST_CODE = 101;
+    private static final int PICK_IMAGE = 101;
     private EditText etUsername, etProfession, etCity, etCountry;
     private Button bDone;
-    private CircleImageView profile_image;
+    CircleImageView profile_image;
     Uri imageUri;
     FirebaseAuth firebaseAuth;
     DatabaseReference databaseReference;
     FirebaseUser firebaseUser;
     StorageReference storageReference;
+    ProgressDialog mLoadingBar;
+    Toolbar toolbar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_setup);
+        toolbar=findViewById(R.id.app_bar);
+
+        setSupportActionBar(toolbar);
+        getSupportActionBar().setTitle("Setup Profile");
+        mLoadingBar=new ProgressDialog(this);
         firebaseAuth=FirebaseAuth.getInstance();
         firebaseUser=firebaseAuth.getCurrentUser();
         databaseReference= FirebaseDatabase.getInstance().getReference().child("User");
@@ -52,14 +63,21 @@ public class SetupActivity extends AppCompatActivity {
         etCity = findViewById(R.id.etCity);
         etCountry = findViewById(R.id.etCounty);
         bDone = findViewById(R.id.bDone);
-        profile_image = findViewById(R.id.profile_image);
+        profile_image = findViewById(R.id.profile_img);
 
         profile_image.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Intent intent=new Intent(Intent.ACTION_GET_CONTENT);
-                intent.setType("Image/*");
-                startActivityForResult(intent,REQUEST_CODE);
+                Intent getIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                getIntent.setType("image/*");
+
+                Intent pickIntent = new Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                pickIntent.setType("image/*");
+
+                Intent chooserIntent = Intent.createChooser(getIntent, "Select Image");
+                chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[] {pickIntent});
+
+                startActivityForResult(chooserIntent, PICK_IMAGE);
             }
         });
 
@@ -88,6 +106,10 @@ public class SetupActivity extends AppCompatActivity {
         } else if (imageUri == null) {
             Toast.makeText(SetupActivity.this, "Please select a photo", Toast.LENGTH_SHORT).show();
         } else {
+
+            mLoadingBar.setTitle("Setup is being Processed");
+            mLoadingBar.setCanceledOnTouchOutside(false);
+            mLoadingBar.show();
             storageReference.child(firebaseUser.getUid()).putFile(imageUri).addOnCompleteListener(new OnCompleteListener<UploadTask.TaskSnapshot>() {
                 @Override
                 public void onComplete(@NonNull Task<UploadTask.TaskSnapshot> task) {
@@ -97,15 +119,19 @@ public class SetupActivity extends AppCompatActivity {
                         public void onSuccess(Uri uri) {
                             HashMap hashMap = new HashMap();
                             hashMap.put("City", city);
-                            hashMap.put("Country", country);
+                            hashMap.put("Username", username);
                             hashMap.put("Profession", profession);
                             hashMap.put("Country", country);
                             hashMap.put("profile image",uri.toString());
                             hashMap.put("status","offline");
 
+
                             databaseReference.child(firebaseUser.getUid()).updateChildren(hashMap).addOnSuccessListener(new OnSuccessListener() {
                                 @Override
                                 public void onSuccess(Object o) {
+                                    mLoadingBar.dismiss();
+                                    Intent intent=new Intent(SetupActivity.this,MainActivity.class);
+                                    startActivity(intent);
                                     Toast.makeText(SetupActivity.this, "Setup Completed", Toast.LENGTH_SHORT).show();
                                 }
                             });
@@ -114,6 +140,7 @@ public class SetupActivity extends AppCompatActivity {
                     }).addOnFailureListener(new OnFailureListener() {
                         @Override
                         public void onFailure(@NonNull Exception e) {
+                            mLoadingBar.dismiss();
                             Toast.makeText(SetupActivity.this, e.toString(), Toast.LENGTH_SHORT).show();
                         }
                     });
@@ -124,6 +151,7 @@ public class SetupActivity extends AppCompatActivity {
     }
 
     private void showError(EditText field, String text) {
+        field.setTextColor(getResources().getColor(R.color.Red));
         field.setText(text);
         field.requestFocus();
 
@@ -132,7 +160,7 @@ public class SetupActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if(requestCode==REQUEST_CODE&&resultCode==RESULT_OK&& data!=null){
+        if(requestCode == PICK_IMAGE){
             imageUri=data.getData();
             profile_image.setImageURI(imageUri);
         }
